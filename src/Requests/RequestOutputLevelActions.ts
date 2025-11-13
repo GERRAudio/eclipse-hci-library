@@ -17,7 +17,7 @@ class RequestOutputLevelActions extends HCIRequest {
         }
 
         for (const action of actions) {
-            this.validateAction(action);
+            RequestOutputLevelActions.validateActionStatic(action);
         }
 
         // Create the payload buffer
@@ -36,6 +36,10 @@ class RequestOutputLevelActions extends HCIRequest {
     }
 
     private validateAction(action: OutputLevelAction): void {
+        RequestOutputLevelActions.validateActionStatic(action);
+    }
+
+    private static validateActionStatic(action: OutputLevelAction): void {
         if (action.port < 1 || action.port > 1024) {
             throw new Error(`Port number must be between 1 and 1024, got ${action.port}`);
         }
@@ -366,21 +370,6 @@ class RequestOutputLevelActions extends HCIRequest {
         return [header, separator, ...rows].join('\n');
     }
 
-    // Get description with range warnings
-    public getDescriptionWithWarnings(): string {
-        const baseDescription = this.getActionsDescription();
-        const outOfRange = this.getOutOfRangePorts();
-
-        if (outOfRange.length === 0) {
-            return baseDescription;
-        }
-
-        const warnings = outOfRange.map(({ port, levelDB, issue }) =>
-            `⚠️  Port ${port}: ${LevelConversion.formatDB(levelDB)} (${issue})`
-        );
-
-        return `${baseDescription}\n\nWarnings:\n${warnings.join('\n')}`;
-    }
 }
 
 export default RequestOutputLevelActions;

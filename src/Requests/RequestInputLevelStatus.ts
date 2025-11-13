@@ -30,7 +30,6 @@ class RequestInputLevelStatus extends HCIRequest {
     // Get description
     public getDescription(): string {
         return `Input Level Status Request:\n` +
-            `  Message ID: 0x${this.MessageID.toString(16).padStart(4, '0')} (${this.MessageID})\n` +
             `  Purpose: Request current settings of all audio input levels from the CSU\n` +
             `  Payload: None (empty)\n` +
             `  Response: Reply Input Level Status message with all current input levels`;

@@ -11,13 +11,13 @@ class RequestEHXControlActions extends HCIRequest {
     public Actions: EHXControlAction[];
 
     constructor(actions: EHXControlAction[] = [], urgent: boolean = false, responseID?: number) {
-        // Validate actions
+        // Validate actions before calling super
         if (actions.length === 0) {
             throw new Error('Must specify at least one EHX control action');
         }
 
         for (const action of actions) {
-            this.validateAction(action);
+            RequestEHXControlActions.validateActionStatic(action);
         }
 
         // Create the payload buffer
@@ -36,6 +36,10 @@ class RequestEHXControlActions extends HCIRequest {
     }
 
     private validateAction(action: EHXControlAction): void {
+        RequestEHXControlActions.validateActionStatic(action);
+    }
+
+    private static validateActionStatic(action: EHXControlAction): void {
         if (action.pinNumber < 0 || action.pinNumber > 31) {
             throw new Error(`Pin number must be between 0 and 31, got ${action.pinNumber}`);
         }

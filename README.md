@@ -1,30 +1,83 @@
 # Eclipse HCI Library
 
-A TypeScript library for communicating with Eclipse HX matrix systems using the HCI (Host Control Interface) protocol. This library provides comprehensive support for both HCI v1 and HCI v2 protocols, allowing you to control crosspoints, manage conferences, handle aliases, control GPIO/SFO cards, and manage audio levels.
+A TypeScript/Node.js library for communicating with Eclipse HX communication systems via the Host Control Interface (HCI) protocol.
 
 ## Features
 
 ### Core Functionality
-- **HCI v1 and v2 Protocol Support** - Full compatibility with both protocol versions
-- **TCP Connection Management** - Reliable connection handling with automatic reconnection
-- **Message Queue System** - Efficient message queuing and processing
-- **Event-Driven Architecture** - Listen for system status changes and responses
-- **Comprehensive Debugging** - Detailed logging and debug information
+- **HCI Protocol Support**: Full HCIv2 protocol implementation with backwards compatibility
+- **Message Queue Management**: Automatic request queuing and response handling
+- **Event-Driven Architecture**: Real-time event emission for all responses
+- **Type Safety**: Complete TypeScript definitions for all data structures
 
-### Request Types (Commands)
-- **Crosspoint Management** - Set and query audio routing
-- **Conference Control** - Create and manage conference connections
-- **Level Control** - Adjust input and output audio levels with dB conversion
-- **Alias Management** - Create, delete, and query Unicode aliases
-- **GPIO/SFO Control** - Control general-purpose I/O and SFO cards
-- **EHX Control** - Manage EHX control actions and card status
-- **System Status** - Query various system status information
+### Supported Requests & Responses
 
-### Response Handling
-- **Real-time Status Updates** - Automatic parsing of system status messages
-- **Level Conversion** - Built-in dB ↔ level value conversion utilities
-- **Visual Displays** - ASCII charts and tables for status visualization
-- **Statistical Analysis** - Comprehensive analysis tools for system monitoring
+#### Port Information
+- **Request Port Info** (`0x0001`) - Get detailed port configuration and status
+- **Reply Port Info** (`0x0002`) - Comprehensive port details including panel types, health status, and capabilities
+
+#### Key Management
+- **Request Locally Assigned Keys** (`0x00B9`) - Get all locally assigned key configurations
+- **Reply Locally Assigned Keys** (`0x00BA`) - Complete key assignment details with operations and status
+
+- **Request Assigned Keys** (`0x00E7`) - Get assigned key configurations (Schema v1 & v2)
+- **Reply Assigned Keys** (`0x00E8`) - Key assignments with endpoint type support
+
+#### Panel Status
+- **Reply Panel Keys Status** - Real-time panel key status updates
+
+#### System Information
+- **Request Card Info** (`0x00C3`) - Get card information and health status
+- **Reply Card Info** (`0x00C4`) - Detailed card health, types, versions, and port ranges
+
+#### Conference & Group Management
+- **Request Conference/Group Members Edits** (`0x00C5`) - Get locally edited conference/group members
+- **Reply Conference Assignments** (`0x00C6`) - Conference member assignments with talk/listen permissions
+
+### Data Structures
+
+All protocol constants and enumerations are centralized in `/DataStructures/`:
+
+#### Hardware & Configuration
+- **Panel Types**: V-Series, ICS, CCI-22, FOR-22, Tel-14/SIP, LQ, Edge Beltpacks
+- **Port Types**: Beltpack, Wireless, Trunk, Panel, Interface types
+- **Card Types**: CPU Master/Slave, MVX, MADI, Fibre, EQUE/IVC32/LMC64
+- **Slot Types**: CPU, DCC, Audio slots
+- **Endpoint Types**: FS II/III, Edge Beltpacks
+- **Expansion Panel Types**: Lever, Push, Rotary configurations
+
+#### Operational States
+- **Card Health**: PCB states (Good, Absent, Faulty, Initializing, etc.)
+- **Key States**: OFF, ON, PARTIAL, RESERVED with visual indicators
+- **Entity Types**: Port, Group, Trunk, Speed Dial, IFB, ISO, Conference, Page, System
+- **Latch Modes**: Non-latch, Latch, Tri-state, Return modes with descriptions
+
+#### Communication & Assignments
+- **Edit Types**: Conference and Group edit operations
+- **Edit Type Masks**: Talk, Listen, Local Delete/Assign, Map Assign, Override permissions
+- **Key Interfaces**: Unified key configuration structure for consistent handling
+
+### Advanced Features
+
+#### Helper Functions
+Each data structure includes comprehensive helper functions:
+- **Name Resolution**: Convert numeric IDs to human-readable names
+- **Validation**: Type safety and range checking
+- **Categorization**: Group related items by function/type
+- **Icon Representation**: Visual status indicators
+- **Severity Assessment**: Health and error classification
+
+#### Filtering & Analysis
+- **Multi-level Filtering**: Filter data by region, page, type, status, health
+- **Statistical Analysis**: Automatic calculation of summary statistics
+- **Relationship Mapping**: Cross-reference keys, ports, cards, and assignments
+- **Change Detection**: Identify local overrides and modifications
+
+#### Display & Formatting
+- **Rich Console Output**: Formatted tables and summaries with icons
+- **Hierarchical Display**: Organized by region, page, conference, etc.
+- **Status Indicators**: Color-coded health and operational status
+- **Summary Statistics**: Automatic totals, breakdowns, and issue detection
 
 ## Installation
 
@@ -36,495 +89,233 @@ npm install eclipse-hci-library
 
 ```typescript
 import EclipseHCI from 'eclipse-hci-library';
+import RequestPortInfo from 'eclipse-hci-library/Requests/RequestPortInfo';
+import RequestCardInfo from 'eclipse-hci-library/Requests/RequestCardInfo';
 
-// Create connection
-const client = new EclipseHCI('192.168.1.100', 9999);
+// Create HCI client
+const client = new EclipseHCI('192.168.1.100', 4001);
 
-// Enable debug output
-client.showDebug = true;
-
-// Connect to matrix
-client.connect();
-
-// Listen for connection events
-client.on('connected', () => {
-    console.log('Connected to Eclipse matrix');
-    
-    // Request system status
-    const statusRequest = RequestCrosspointStatus.create();
-    client.addToQueue(statusRequest);
+// Event handlers
+client.on('onReplyPortInfo', (portInfo) => {
+    console.log(`Port ${portInfo.portNumber}: ${portInfo.panelTypeName}`);
+    console.log(`Health: ${portInfo.healthIcon} ${portInfo.healthStatus}`);
 });
 
-// Listen for status updates
-client.on('onReplyCrosspointStatus', (status) => {
-    console.log(`Found ${status.crosspoints.length} active crosspoints`);
+client.on('onReplyCardInfo', (cardInfo) => {
+    cardInfo.cards.forEach(card => {
+        console.log(`Card ${card.slotNumber}: ${card.currentCardTypeName}`);
+        console.log(`Health: ${card.healthIcon} ${card.healthName}`);
+    });
 });
+
+// Send requests
+const portInfoRequest = RequestPortInfo.forSlot(5, 1);
+const cardInfoRequest = RequestCardInfo.forSlot(3);
+
+client.addToQueue(portInfoRequest);
+client.addToQueue(cardInfoRequest);
 ```
 
-## Request Messages
+## Advanced Usage
 
-### Crosspoint Control
-
-#### RequestCrosspointActions
-Control audio routing between inputs and outputs.
+### Key Management
 
 ```typescript
-import { RequestCrosspointActions } from 'eclipse-hci-library';
+import RequestLocallyAssignedKeys from 'eclipse-hci-library/Requests/RequestLocallyAssignedKeys';
+import { getKeyStateName, getLatchModeName } from 'eclipse-hci-library/DataStructures';
 
-// Create a single crosspoint (Input 3 → Output 5)
-const request = RequestCrosspointActions.singleCrosspoint(3, 5, 'connect');
-client.addToQueue(request);
+// Request locally assigned keys
+const keysRequest = RequestLocallyAssignedKeys.forPanel(5, 1);
+client.addToQueue(keysRequest);
 
-// Create multiple crosspoints
-const multiRequest = RequestCrosspointActions.forCrosspoints([
-    { input: 3, output: 5, action: 'connect' },
-    { input: 4, output: 6, action: 'connect' },
-    { input: 7, output: 8, action: 'disconnect' }
-]);
-
-// Disconnect all outputs from an input
-const disconnectRequest = RequestCrosspointActions.disconnectInput(3);
-
-// Connect input to multiple outputs
-const fanoutRequest = RequestCrosspointActions.connectInputToMultipleOutputs(3, [5, 6, 7]);
-```
-
-#### RequestCrosspointStatus
-Query current crosspoint connections.
-
-```typescript
-import { RequestCrosspointStatus } from 'eclipse-hci-library';
-
-// Request all crosspoint status
-const statusRequest = RequestCrosspointStatus.create();
-client.addToQueue(statusRequest);
-
-// Listen for response
-client.on('onReplyCrosspointStatus', (status) => {
-    console.log(`Active crosspoints: ${status.crosspoints.length}`);
+client.on('onReplyLocallyAssignedKeys', (keysData) => {
+    // Filter keys by region
+    const region1Keys = ReplyLocallyAssignedKeys.getKeysByRegion(keysData, 1);
     
-    // Find connections for specific input
-    const input3Connections = status.crosspoints.filter(cp => cp.input === 3);
-    console.log(`Input 3 connected to outputs: ${input3Connections.map(cp => cp.output).join(', ')}`);
+    // Find specific key
+    const key = ReplyLocallyAssignedKeys.findKeyByIdentifier(keysData, 'R1K5P0');
+    
+    if (key) {
+        console.log(`Key ${key.keyIdentifier}:`);
+        console.log(`  Entity: ${key.entityName}`);
+        console.log(`  State: ${getKeyStateName(key.keyStatus.keyState)}`);
+        console.log(`  Latch Mode: ${getLatchModeName(key.keyOperation.latchMode)}`);
+    }
 });
 ```
 
-### Conference Control
-
-#### RequestConferenceActions
-Manage conference connections between multiple ports.
+### Conference Management
 
 ```typescript
-import { RequestConferenceActions } from 'eclipse-hci-library';
+import RequestConferenceGroupMembersEdits, { EditType } from 'eclipse-hci-library/Requests/RequestConferenceGroupMembersEdits';
 
-// Create a simple conference
-const conference = RequestConferenceActions.createConference([1, 2, 3, 4], 'connect');
-client.addToQueue(conference);
+// Request conference member edits
+const conferenceRequest = RequestConferenceGroupMembersEdits.forConference();
+client.addToQueue(conferenceRequest);
 
-// Add member to existing conference
-const addMember = RequestConferenceActions.singleAction(5, 1, 'connect');
-
-// Remove member from conference
-const removeMember = RequestConferenceActions.singleAction(3, 1, 'disconnect');
-
-// Create conference with listen-only members
-const mixedConference = RequestConferenceActions.forActions([
-    { member: 1, conference: 1, action: 'connect' },    // Full participant
-    { member: 2, conference: 1, action: 'connect' },    // Full participant
-    { member: 3, conference: 1, action: 'listen' }      // Listen-only
-]);
-```
-
-#### RequestConferenceStatus
-Query current conference memberships.
-
-```typescript
-import { RequestConferenceStatus } from 'eclipse-hci-library';
-
-const statusRequest = RequestConferenceStatus.create();
-client.addToQueue(statusRequest);
-
-client.on('conferenceStatus', (status) => {
-    const conferences = ReplyConferenceStatus.getConferenceGroups(status);
+client.on('onReplyConferenceAssignments', (assignments) => {
+    // Check for local modifications
+    const localOverrides = ReplyConferenceAssignments.getLocalOverrideAssignments(assignments);
+    const localDeletes = ReplyConferenceAssignments.getLocalDeletedAssignments(assignments);
     
-    conferences.forEach((conference, confNum) => {
-        console.log(`Conference ${confNum}: ${conference.length} members`);
+    if (localOverrides.length > 0) {
+        console.warn(`${localOverrides.length} local overrides detected!`);
+    }
+    
+    // Group by conference
+    const byConference = ReplyConferenceAssignments.getAssignmentsByConference(assignments);
+    Object.entries(byConference).forEach(([confNum, members]) => {
+        const talkMembers = members.filter(m => m.editType.talk).length;
+        console.log(`Conference ${confNum}: ${talkMembers} talk members`);
     });
 });
 ```
 
-### Level Control
-
-#### RequestInputLevelActions
-Control input audio levels with dB conversion.
+### System Health Monitoring
 
 ```typescript
-import { RequestInputLevelActions } from 'eclipse-hci-library';
+import RequestCardInfo from 'eclipse-hci-library/Requests/RequestCardInfo';
+import { getCardHealthSeverity, isCardHealthy } from 'eclipse-hci-library/DataStructures';
 
-// Set single port level
-const levelRequest = RequestInputLevelActions.singleActionDB(3, -6); // Port 3 to -6dB
-client.addToQueue(levelRequest);
+// Monitor all cards
+const allCardRequests = RequestCardInfo.forAllSlots(16);
+allCardRequests.forEach(request => client.addToQueue(request));
 
-// Set multiple ports with different levels
-const multiLevel = RequestInputLevelActions.forPortLevelsDB([
-    { port: 3, levelDB: 0 },    // Unity gain
-    { port: 4, levelDB: -6 },   // -6 dB
-    { port: 5, levelDB: -12 }   // -12 dB
-]);
-
-// Mute specific ports
-const muteRequest = RequestInputLevelActions.mutePorts([3, 4, 5]);
-
-// Unmute ports (set to unity gain)
-const unmuteRequest = RequestInputLevelActions.unmutePorts([3, 4, 5]);
-
-// Set multiple ports to same level
-const groupLevel = RequestInputLevelActions.setPortsToLevelDB([1, 2, 3, 4], -10);
-```
-
-#### RequestInputLevelStatus
-Query current input levels.
-
-```typescript
-import { RequestInputLevelStatus } from 'eclipse-hci-library';
-
-const statusRequest = RequestInputLevelStatus.create();
-client.addToQueue(statusRequest);
-
-client.on('onReplyInputLevelStatus', (status) => {
-    // Display active levels
-    console.log(ReplyInputLevelStatus.getLevelSummary(status));
+client.on('onReplyCardInfo', (cardInfo) => {
+    const stats = ReplyCardInfo.getCardStats(cardInfo);
     
-    // Check specific port
-    const port3Level = ReplyInputLevelStatus.getLevelForPort(status, 3);
-    if (port3Level) {
-        console.log(`Port 3: ${LevelConversion.formatDB(port3Level.levelDB)}`);
-    }
+    console.log(`System Health Summary:`);
+    console.log(`  Total Cards: ${stats.totalCards}`);
+    console.log(`  Healthy: ${stats.healthyCards} | Faulty: ${stats.faultyCards}`);
+    console.log(`  Type Matches: ${stats.typeMatchCards}`);
     
-    // Get statistics
-    const stats = ReplyInputLevelStatus.getLevelStats(status);
-    console.log(`Average level: ${LevelConversion.formatDB(stats.avgDB)}`);
-});
-```
-
-#### RequestOutputLevelActions
-Control output audio levels (-72dB to +18dB range).
-
-```typescript
-import { RequestOutputLevelActions } from 'eclipse-hci-library';
-
-// Set output levels with range checking
-const outputLevel = RequestOutputLevelActions.singleActionDB(5, -6); // -6dB
-client.addToQueue(outputLevel);
-
-// Full cut (complete muting)
-const fullCut = RequestOutputLevelActions.mutePorts([3, 4]);
-
-// Maximum output level
-const maxLevel = RequestOutputLevelActions.setPortsToMax([5, 6]); // ~+18dB
-
-// Check for range issues
-console.log(outputLevel.getDescriptionWithWarnings());
-```
-
-#### RequestOutputLevelStatus
-Query current output levels.
-
-```typescript
-import { RequestOutputLevelStatus } from 'eclipse-hci-library';
-
-const statusRequest = RequestOutputLevelStatus.create();
-client.addToQueue(statusRequest);
-
-client.on('onReplyOutputLevelStatus', (status) => {
-    if (status.isUpdate) {
-        console.log('Output levels were changed');
-    } else {
-        console.log('Current output level status');
-    }
-    
-    // Check for out-of-range levels
-    const outOfRange = ReplyOutputLevelStatus.getOutOfRangePorts(status);
-    if (outOfRange.length > 0) {
-        console.log('Ports outside -72dB to +18dB range:');
-        outOfRange.forEach(p => console.log(`Port ${p.port}: ${LevelConversion.formatDB(p.levelDB)}`));
-    }
-});
-```
-
-### Crosspoint Level Control
-
-#### RequestCrosspointLevelActions
-Control individual crosspoint levels (gain/attenuation).
-
-```typescript
-import { RequestCrosspointLevelActions } from 'eclipse-hci-library';
-
-// Set crosspoint level
-const cpLevel = RequestCrosspointLevelActions.singleActionDB(3, 5, -6); // Input 3→Output 5, -6dB
-client.addToQueue(cpLevel);
-
-// Set multiple crosspoint levels
-const multiCpLevel = RequestCrosspointLevelActions.forCrosspointLevelsDB([
-    { input: 3, output: 5, levelDB: -6 },
-    { input: 4, output: 6, levelDB: -3 },
-    { input: 7, output: 8, levelDB: 0 }
-]);
-
-// Mute specific crosspoints
-const muteCrosspoints = RequestCrosspointLevelActions.muteCrosspoints([
-    { input: 3, output: 5 },
-    { input: 4, output: 6 }
-]);
-```
-
-#### RequestCrosspointLevelStatus
-Query crosspoint level settings.
-
-```typescript
-import { RequestCrosspointLevelStatus } from 'eclipse-hci-library';
-
-const statusRequest = RequestCrosspointLevelStatus.create();
-client.addToQueue(statusRequest);
-
-client.on('onReplyCrosspointLevelStatus', (status) => {
-    console.log(`${status.levels.length} crosspoints have custom levels`);
-    
-    // Find specific crosspoint level
-    const cpLevel = ReplyCrosspointLevelStatus.getLevelForCrosspoint(status, 3, 5);
-    if (cpLevel) {
-        console.log(`Input 3→Output 5: ${LevelConversion.formatDB(cpLevel.levelDB)}`);
-    }
-});
-```
-
-### Alias Management
-
-#### RequestUnicodeAliasList
-Request list of all Unicode aliases.
-
-```typescript
-import { RequestUnicodeAliasList } from 'eclipse-hci-library';
-
-const aliasRequest = RequestUnicodeAliasList.create();
-client.addToQueue(aliasRequest);
-
-client.on('onReplyUnicodeAliasStatus', (aliases) => {
-    if (aliases.isFullList) {
-        console.log(`Total aliases: ${aliases.aliases.length}`);
-        
-        // Group by entity type
-        const byType = ReplyUnicodeAliasStatus.getAliasesByEntityType(aliases);
-        Object.entries(byType).forEach(([type, typeAliases]) => {
-            console.log(`${type}: ${typeAliases.length} aliases`);
+    // Check for critical issues
+    const faultyCards = ReplyCardInfo.getFaultyCards(cardInfo);
+    if (faultyCards.length > 0) {
+        console.error(`⚠️  ${faultyCards.length} cards need attention!`);
+        faultyCards.forEach(card => {
+            const severity = getCardHealthSeverity(card.health);
+            console.error(`  Slot ${card.slotNumber}: ${card.healthDescription} [${severity}]`);
         });
     }
 });
 ```
 
-#### RequestAliasDelete
-Delete previously created aliases.
+### Bulk Operations
 
 ```typescript
-import { RequestAliasDelete } from 'eclipse-hci-library';
+// Request multiple items efficiently
+const requests = [
+    ...RequestCardInfo.forSlotRange(1, 8),        // Cards 1-8
+    ...RequestPortInfo.forSlotRange(5, 7),        // Ports on slots 5-7
+    RequestLocallyAssignedKeys.forPanel(5, 1),     // Keys for panel
+    RequestConferenceGroupMembersEdits.forBothTypes() // Both conference & group edits
+].flat();
 
-// Delete single alias
-const deleteOne = RequestAliasDelete.singleAlias(1, 1, 2); // System 1, Entity Type 1, Instance 2
+// Queue all requests
+requests.forEach(request => client.addToQueue(request));
 
-// Delete port aliases (common use case)
-const deletePort = RequestAliasDelete.forPort(1, 3); // System 1, Port 3
-
-// Delete multiple port aliases
-const deletePorts = RequestAliasDelete.forPorts(1, [3, 4, 5]); // System 1, Ports 3,4,5
-
-client.addToQueue(deletePort);
-```
-
-### GPIO/SFO Control
-
-#### RequestEHXControlActions
-Control GPIO and SFO card pins.
-
-```typescript
-import { RequestEHXControlActions } from 'eclipse-hci-library';
-
-// Add EHX control
-const addControl = RequestEHXControlActions.addControl(5, 12, 'enable');
-client.addToQueue(addControl);
-
-// Delete EHX control
-const deleteControl = RequestEHXControlActions.deleteControl(5, 12, 'enable');
-
-// Multiple actions
-const multiActions = RequestEHXControlActions.forActions([
-    { direction: 'add', cardNumber: 5, pinNumber: 12, mapType: 'enable' },
-    { direction: 'add', cardNumber: 5, pinNumber: 13, mapType: 'inhibit' },
-    { direction: 'delete', cardNumber: 3, pinNumber: 8, mapType: 'enable' }
+// Batch processing with Promise.all for synchronous operations
+const results = await Promise.all([
+    new Promise(resolve => client.once('onReplyCardInfo', resolve)),
+    new Promise(resolve => client.once('onReplyPortInfo', resolve)),
+    new Promise(resolve => client.once('onReplyLocallyAssignedKeys', resolve))
 ]);
 ```
 
-#### RequestEHXControlCardStatus
-Query EHX control card status.
+## Data Structure Reference
+
+### Import Patterns
 
 ```typescript
-import { RequestEHXControlCardStatus } from 'eclipse-hci-library';
+// Individual imports
+import { 
+    getCardHealthName, 
+    getKeyStateName, 
+    getLatchModeName,
+    getPanelTypeName 
+} from 'eclipse-hci-library/DataStructures';
 
-const cardStatus = RequestEHXControlCardStatus.create();
-client.addToQueue(cardStatus);
+// Category imports
+import * from 'eclipse-hci-library/DataStructures/CardHealth';
+import * from 'eclipse-hci-library/DataStructures/KeyStates';
 
-client.on('onReplyEHXControlCardStatus', (status) => {
-    const presentCards = ReplyEHXControlCardStatus.getPresentCards(status);
-    const gpioCards = ReplyEHXControlCardStatus.getPresentGPIOCards(status);
-    const sfoCards = ReplyEHXControlCardStatus.getPresentSFOCards(status);
-    
-    console.log(`Present cards: ${presentCards.length}`);
-    console.log(`GPIO cards: ${gpioCards.length}, SFO cards: ${sfoCards.length}`);
-});
+// All data structures
+import * as DataStructures from 'eclipse-hci-library/DataStructures';
 ```
 
-### GPIO/SFO Status Monitoring
-
-Listen for GPIO/SFO pin state changes:
+### Validation & Safety
 
 ```typescript
-client.on('onReplyGPIOSFOStatus', (gpioStatus) => {
-    console.log(`Card ${gpioStatus.cardNumber} (${ReplyGPIOSFOStatus.getCardType(gpioStatus)}):`);
-    
-    const activeInputs = ReplyGPIOSFOStatus.getActiveInputPins(gpioStatus);
-    const activeOutputs = ReplyGPIOSFOStatus.getActiveOutputPins(gpioStatus);
-    
-    if (activeInputs.length > 0) {
-        console.log('Active inputs:', activeInputs.map(p => p.pinNumber).join(', '));
-    }
-    
-    if (activeOutputs.length > 0) {
-        console.log('Active outputs:', activeOutputs.map(p => p.pinNumber).join(', '));
-    }
-});
+import { 
+    isValidCardHealth, 
+    isValidKeyState, 
+    isValidLatchMode,
+    isCardHealthy 
+} from 'eclipse-hci-library/DataStructures';
+
+// Validate before processing
+if (isValidCardHealth(health) && !isCardHealthy(health)) {
+    console.warn(`Card health issue: ${getCardHealthName(health)}`);
+}
 ```
 
-## Utility Classes
+## Architecture
 
-### LevelConversion
-Convert between level values (0-255) and dB values.
+### Request/Response Pattern
+- All requests extend `HCIRequest` base class
+- All responses are parsed by `HCIResponse` message router
+- Automatic message ID routing and payload parsing
+- Event emission for real-time handling
 
-```typescript
-import { LevelConversion } from 'eclipse-hci-library';
-
-// Convert level to dB
-const db = LevelConversion.levelToDB(204); // 0 dB (unity gain)
-const dbFormatted = LevelConversion.formatDB(db); // "0.0 dB"
-
-// Convert dB to level
-const level = LevelConversion.dBToLevel(-6); // Level for -6 dB
-
-// Level ranges
-console.log(`Minimum level: ${LevelConversion.MIN_LEVEL}`); // 0
-console.log(`Maximum level: ${LevelConversion.MAX_LEVEL}`); // 255
-console.log(`Unity gain level: ${LevelConversion.UNITY_LEVEL}`); // 204
-```
-
-## Event Handling
-
-The library uses an event-driven architecture. Here are the main events:
-
-```typescript
-// Connection events
-client.on('connected', () => console.log('Connected to matrix'));
-client.on('disconnected', () => console.log('Disconnected from matrix'));
-client.on('error', (error) => console.error('Connection error:', error));
-
-// Status response events
-client.on('onReplyCrosspointStatus', (status) => { /* Handle crosspoint status */ });
-client.on('conferenceStatus', (status) => { /* Handle conference status */ });
-client.on('onReplyCrosspointLevelStatus', (status) => { /* Handle crosspoint levels */ });
-client.on('onReplyUnicodeAliasStatus', (status) => { /* Handle alias status */ });
-client.on('onReplyEHXControlCardStatus', (status) => { /* Handle EHX card status */ });
-client.on('onReplyGPIOSFOStatus', (status) => { /* Handle GPIO/SFO status */ });
-client.on('onReplyInputLevelStatus', (status) => { /* Handle input levels */ });
-client.on('onReplyOutputLevelStatus', (status) => { /* Handle output levels */ });
-```
-
-## Advanced Usage
-
-### Custom Request Building
-
-```typescript
-// Build complex crosspoint actions
-const request = new RequestCrosspointActions([]);
-request.addCrosspoint({ input: 3, output: 5, action: 'connect' });
-request.addCrosspoint({ input: 4, output: 6, action: 'connect' });
-
-// Check before sending
-console.log(request.getCrosspointSummary());
-console.log(`Payload size: ${request.getPayloadSize()} bytes`);
-
-client.addToQueue(request);
-```
-
-### Status Analysis
-
-```typescript
-client.on('onReplyInputLevelStatus', (status) => {
-    // Get comprehensive statistics
-    const stats = ReplyInputLevelStatus.getLevelStats(status);
-    
-    // Find problematic levels
-    const problems = ReplyInputLevelStatus.getProblematicPorts(status);
-    
-    // Display formatted table
-    console.log(ReplyInputLevelStatus.formatLevelTable(status));
-    
-    // Compare with previous status
-    if (previousStatus) {
-        const changes = ReplyInputLevelStatus.compareLevels(status, previousStatus);
-        console.log(`${changes.changed.length} levels changed`);
-    }
-});
-```
+### Data Structure Organization
+- Centralized constants in `/DataStructures/`
+- Helper functions for every enumeration
+- Consistent naming patterns across all modules
+- Type safety with TypeScript definitions
 
 ### Error Handling
+- Comprehensive validation at all levels
+- Graceful degradation for unknown values
+- Detailed error messages and logging
+- Payload size and format validation
 
-```typescript
-try {
-    const request = RequestCrosspointActions.singleCrosspoint(3, 5, 'connect');
-    client.addToQueue(request);
-} catch (error) {
-    console.error('Invalid request parameters:', error.message);
-}
+## Events
 
-// Handle connection errors
-client.on('error', (error) => {
-    console.error('Matrix connection error:', error);
-    // Implement reconnection logic
-});
-```
+The library emits the following events:
 
-## Protocol Support
+- `onReplyPortInfo` - Port information received
+- `onReplyLocallyAssignedKeys` - Locally assigned keys received
+- `onReplyAssignedKeys` - Assigned keys received
+- `onReplyPanelKeysStatus` - Panel key status update
+- `onReplyCardInfo` - Card information received
+- `onReplyConferenceAssignments` - Conference assignments received
 
-- **HCI v1**: Basic protocol support with broadcast messages
-- **HCI v2**: Full protocol support with all message types
-- **Message IDs**: Supports all documented Eclipse HCI message types
-- **Protocol Tags**: Automatic protocol tag handling (0xABBACEDE)
-- **Schema Versions**: Protocol schema version management
+## Contributing
 
-## Dependencies
-
-- Node.js 14+
-- TypeScript 4+
-- No external runtime dependencies
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-message-type`)
+3. Add your implementation following existing patterns
+4. Update data structures in `/DataStructures/` as needed
+5. Add comprehensive tests
+6. Submit a pull request
 
 ## License
 
 MIT License - see LICENSE file for details.
 
-## Contributing
+## Version History
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Submit a pull request
+### v2.0.0 (Current)
+- Complete data structure refactoring
+- Centralized constants and enumerations
+- Added Conference/Group management
+- Card health monitoring
+- Enhanced key management with unified interfaces
+- Comprehensive helper functions and validation
+- Rich display formatting with icons and summaries
 
-## Support
-
-For questions and support, please refer to the Eclipse HX documentation or create an issue in the repository.
+### v1.x
+- Initial HCI protocol implementation
+- Basic request/response handling
+- Port and key information support

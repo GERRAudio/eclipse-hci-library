@@ -11,13 +11,13 @@ class RequestInputLevelActions extends HCIRequest {
     public Actions: InputLevelAction[];
 
     constructor(actions: InputLevelAction[] = [], urgent: boolean = false, responseID?: number) {
-        // Validate actions
+        // Validate actions before calling super
         if (actions.length === 0) {
             throw new Error('Must specify at least one input level action');
         }
 
         for (const action of actions) {
-            this.validateAction(action);
+            RequestInputLevelActions.validateActionStatic(action);
         }
 
         // Create the payload buffer
@@ -36,6 +36,10 @@ class RequestInputLevelActions extends HCIRequest {
     }
 
     private validateAction(action: InputLevelAction): void {
+        RequestInputLevelActions.validateActionStatic(action);
+    }
+
+    private static validateActionStatic(action: InputLevelAction): void {
         if (action.port < 1 || action.port > 1024) {
             throw new Error(`Port number must be between 1 and 1024, got ${action.port}`);
         }

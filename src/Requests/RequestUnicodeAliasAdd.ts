@@ -18,7 +18,7 @@ class RequestUnicodeAliasAdd extends HCIRequest {
         }
 
         for (const alias of aliases) {
-            this.validateAlias(alias);
+            RequestUnicodeAliasAdd.validateAliasStatic(alias);
         }
 
         // Create the payload buffer
@@ -37,6 +37,10 @@ class RequestUnicodeAliasAdd extends HCIRequest {
     }
 
     private validateAlias(alias: UnicodeAliasEntry): void {
+        RequestUnicodeAliasAdd.validateAliasStatic(alias);
+    }
+
+    private static validateAliasStatic(alias: UnicodeAliasEntry): void {
         if (alias.system < 0 || alias.system > 255) {
             throw new Error(`System number must be between 0 and 255, got ${alias.system}`);
         }

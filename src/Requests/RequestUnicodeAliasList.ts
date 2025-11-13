@@ -30,7 +30,6 @@ class RequestUnicodeAliasList extends HCIRequest {
     // Get description
     public getDescription(): string {
         return `Unicode Alias List Request:\n` +
-            `  Message ID: 0x${this.MessageID.toString(16).padStart(4, '0')} (${this.MessageID})\n` +
             `  Purpose: Request list of all Unicode aliases from the matrix\n` +
             `  Payload: None (empty)\n` +
             `  Response: ReplyUnicodeAliasStatus with U flag clear`;

@@ -6,6 +6,14 @@ import { ReplyEHXControlCardStatus } from './Responses/ReplyEHXControlCardStatus
 import { ReplyGPIOSFOStatus } from './Responses/ReplyGPIOSFOStatus';
 import { ReplyInputLevelStatus } from './Responses/ReplyInputLevelStatus';
 import { ReplyOutputLevelStatus } from './Responses/ReplyOutputLevelStatus';
+import { ReplyPanelStatus } from './Responses/ReplyPanelStatus';
+import { ReplySystemCardStatus } from './Responses/ReplySystemCardStatus';
+import { ReplyPanelKeysStatus } from './Responses/ReplyPanelKeysStatus';
+import { ReplyPortInfo } from './Responses/ReplyPortInfo';
+import { ReplyLocallyAssignedKeys } from './Responses/ReplyLocallyAssignedKeys';
+import { ReplyAssignedKeys } from './Responses/ReplyAssignedKeys';
+import { ReplyCardInfo } from './Responses/ReplyCardInfo';
+import { ReplyConferenceAssignments } from './Responses/ReplyConferenceAssignments';
 
 class HCIResponse {
     public static handleMessageByID(
@@ -74,6 +82,42 @@ class HCIResponse {
                     case 0x0025: // Output Level Status Reply
                         this.writeDebug(eclipseHCI, 'Handling Output Level Status Reply');
                         this.parseOutputLevelStatusReply(payload, flags, eclipseHCI);
+                        break;
+                    case 0x001E: // Panel Status Reply
+                        this.writeDebug(eclipseHCI, 'Handling Panel Status Reply');
+                        this.parsePanelStatusReply(payload, flags, eclipseHCI);
+                        break;
+                    case 0x0004: // System Card Status Reply
+                        this.writeDebug(eclipseHCI, 'Handling System Card Status Reply');
+                        this.parseSystemCardStatusReply(payload, flags, eclipseHCI);
+                        break;
+                    case 0x00B2: // Panel Keys Status Reply (Message ID 178)
+                        this.writeDebug(eclipseHCI, 'Handling Panel Keys Status Reply');
+                        this.parsePanelKeysStatusReply(payload, eclipseHCI);
+                        break;
+                    case 0x00B4: // Panel Keys Status Reply (Message ID 180) - Reply to Panel Keys Action
+                        this.writeDebug(eclipseHCI, 'Handling Panel Keys Status Reply (Action Response)');
+                        this.parsePanelKeysStatusReply(payload, eclipseHCI);
+                        break;
+                    case 0x00B8: // Port Info Reply (Message ID 184)
+                        this.writeDebug(eclipseHCI, 'Handling Port Info Reply');
+                        this.parsePortInfoReply(payload, eclipseHCI);
+                        break;
+                    case 0x00BA: // Locally Assigned Keys Reply (Message ID 186)
+                        this.writeDebug(eclipseHCI, 'Handling Locally Assigned Keys Reply');
+                        this.parseLocallyAssignedKeysReply(payload, eclipseHCI);
+                        break;
+                    case 0x00E8: // Assigned Keys Reply (Message ID 232)
+                        this.writeDebug(eclipseHCI, 'Handling Assigned Keys Reply');
+                        this.parseAssignedKeysReply(payload, protocolVersion, eclipseHCI);
+                        break;
+                    case 0x00C4: // Card Info Reply (Message ID 196)
+                        this.writeDebug(eclipseHCI, 'Handling Card Info Reply');
+                        this.parseCardInfoReply(payload, eclipseHCI);
+                        break;
+                    case 0x00C6: // Conference Assignments Reply (Message ID 198)
+                        this.writeDebug(eclipseHCI, 'Handling Conference Assignments Reply');
+                        this.parseConferenceAssignmentsReply(payload, eclipseHCI);
                         break;
                     default:
                         this.writeDebug(eclipseHCI, `Unknown protocol v2 message ID: 0x${messageID.toString(16).padStart(4, '0')}`);
@@ -220,6 +264,93 @@ class HCIResponse {
         }
     }
 
+    private static parsePanelStatusReply(payload: Buffer, flags: any, eclipseHCI?: any): void {
+        const panelStatus = ReplyPanelStatus.parse(payload, flags);
+
+        if (panelStatus) {
+            // Display the parsed panel status
+            ReplyPanelStatus.displayPanelStatus(panelStatus);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyPanelStatus', panelStatus);
+            }
+        }
+    }
+
+    private static parseSystemCardStatusReply(payload: Buffer, flags: any, eclipseHCI?: any): void {
+        const cardStatus = ReplySystemCardStatus.parse(payload, flags);
+
+        if (cardStatus) {
+            // Display the parsed card status
+            ReplySystemCardStatus.displaySystemCardStatus(cardStatus);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplySystemCardStatus', cardStatus);
+            }
+        }
+    }
+
+    private static parsePanelKeysStatusReply(payload: Buffer, eclipseHCI?: any): void {
+        const keysStatusResult = ReplyPanelKeysStatus.parse(payload);
+
+        if (keysStatusResult) {
+            // Display the parsed keys status result
+            ReplyPanelKeysStatus.displayPanelKeysStatus(keysStatusResult);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyPanelKeysStatus', keysStatusResult);
+            }
+        }
+    }
+
+    private static parsePortInfoReply(payload: Buffer, eclipseHCI?: any): void {
+        const portInfo = ReplyPortInfo.parse(payload);
+
+        if (portInfo) {
+            // Display the parsed port info
+            ReplyPortInfo.displayPortInfo(portInfo);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyPortInfo', portInfo);
+            }
+        }
+    }
+
+    private static parseLocallyAssignedKeysReply(payload: Buffer, eclipseHCI?: any): void {
+        const locallyAssignedKeys = ReplyLocallyAssignedKeys.parse(payload);
+
+        if (locallyAssignedKeys) {
+            // Display the parsed locally assigned keys
+            ReplyLocallyAssignedKeys.displayLocallyAssignedKeys(locallyAssignedKeys);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyLocallyAssignedKeys', locallyAssignedKeys);
+            }
+        }
+    }
+
+    private static parseAssignedKeysReply(payload: Buffer, protocolVersion: number | null, eclipseHCI?: any): void {
+        // Default to schema 1 if protocol version is not available
+        const schemaVersion = (protocolVersion === 1 || protocolVersion === 2) ? protocolVersion : 1;
+
+        const assignedKeys = ReplyAssignedKeys.parse(payload, schemaVersion as 1 | 2);
+
+        if (assignedKeys) {
+            // Display the parsed assigned keys
+            ReplyAssignedKeys.displayAssignedKeys(assignedKeys);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyAssignedKeys', assignedKeys);
+            }
+        }
+    }
+
     private static parseBroadcastMessageV1(payload: Buffer, eclipseHCI?: any): void {
         // Check if payload is long enough for the minimum structure
         // Class (2) + Code (2) + Reserved (4) = 8 bytes minimum
@@ -292,6 +423,34 @@ class HCIResponse {
         // Emit the event if EclipseHCI instance is provided
         if (eclipseHCI && typeof eclipseHCI.emitBroadcastMessage === 'function') {
             eclipseHCI.emitBroadcastMessage(broadcastData);
+        }
+    }
+
+    private static parseCardInfoReply(payload: Buffer, eclipseHCI?: any): void {
+        const cardInfo = ReplyCardInfo.parse(payload);
+
+        if (cardInfo) {
+            // Display the parsed card info
+            ReplyCardInfo.displayCardInfo(cardInfo);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyCardInfo', cardInfo);
+            }
+        }
+    }
+
+    private static parseConferenceAssignmentsReply(payload: Buffer, eclipseHCI?: any): void {
+        const conferenceAssignments = ReplyConferenceAssignments.parse(payload);
+
+        if (conferenceAssignments) {
+            // Display the parsed conference assignments
+            ReplyConferenceAssignments.displayConferenceAssignments(conferenceAssignments);
+
+            // Emit event if EclipseHCI instance is provided
+            if (eclipseHCI && typeof eclipseHCI.emit === 'function') {
+                eclipseHCI.emit('onReplyConferenceAssignments', conferenceAssignments);
+            }
         }
     }
 }
