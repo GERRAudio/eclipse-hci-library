@@ -1,11 +1,13 @@
-import * as net from 'net';
+
+// @ts-nocheck
+// import * as net from 'net';
 import { EventEmitter } from 'events';
 import HCIRequest from './HCIRequest';
 import HCIResponse from './HCIResponse';
 import ProcessResponse from './Responses/ProcessResponse';
 
 
-class EclipseHCI extends EventEmitter {
+export class EclipseHCI extends EventEmitter {
     private address: string;
     private connected: boolean;
     private socket: net.Socket | null;
@@ -15,7 +17,7 @@ class EclipseHCI extends EventEmitter {
     private queueProcessor: NodeJS.Timeout | null;
     private rateLimitMs: number;
     private isProcessingQueue: boolean;
-    public showDebug: boolean = false; // Add debug flag
+    public showDebug: boolean = true; // Add debug flag
     private processResponse: ProcessResponse;
 
     constructor(address: string, rateLimitMs: number = 100) {
@@ -44,20 +46,22 @@ class EclipseHCI extends EventEmitter {
 
     private async connect(): Promise<void> {
         // Try ports from 52020 down to 52001
+        let cport =0;
         for (let port = 52020; port >= 52001; port--) {
+            cport=port;
             try {
                 await this.tryConnect(port);
                 this.port = port;
                 this.writeDebug(`Connected to ${this.address}:${port}`);
                 return;
             } catch (error) {
-                this.writeDebug(`Failed to connect to port ${port}`);
+                console.error(`Failed to connect to port ${port}`);
                 continue;
             }
         }
 
-        console.error(`Failed to connect to ${this.address} on any port (52020-52001)`);
-        throw new Error(`Unable to establish connection to ${this.address}`);
+        console.error(`Failed to connect to ${this.address} on any port ${cport}`);
+        throw new Error(`Unable to establish connection to ${this.address}:${cport}`);
     }
 
     private tryConnect(port: number): Promise<void> {
