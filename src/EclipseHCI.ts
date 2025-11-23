@@ -323,10 +323,141 @@ export class HCI {
         data.copy(buf, 6);
         return buf;
     }
+    // Queue management methods
+    public addToQueue(request: HCIRequest): void {
+        if (request.Urgent) {
+            // Find the position to insert urgent message (after other urgent messages)
+            let insertIndex = 0;
+            for (let i = 0; i < this.messageQueue.length; i++) {
+                if (this.messageQueue[i].Urgent) {
+                    insertIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+            this.messageQueue.splice(insertIndex, 0, request);
+            this.writeDebug(`Added urgent message (RequestID: ${request.RequestID}) to queue at position ${insertIndex}`);
+        } else {
+            this.messageQueue.push(request);
+            this.writeDebug(`Added normal message (RequestID: ${request.RequestID}) to queue`);
+        }
 
+        this.writeDebug(`Queue size: ${this.messageQueue.length}`);
+    }
 
- 
+    public createAndQueueMessage(requestID: number, data: Buffer, urgent: boolean = false, responseID?: number): void {
+        const request = new HCIRequest(requestID, data, urgent, responseID);
+        this.addToQueue(request);
+    }
+
+    private startQueueProcessor(): void {
+        if (this.queueProcessor) {
+            clearInterval(this.queueProcessor);
+        }
+
+        this.queueProcessor = setInterval(() => {
+            this.processQueue();
+        }, this.rateLimitMs);
+
+        this.writeDebug(`Queue processor started with ${this.rateLimitMs}ms rate limit`);
+    }
+
+    private stopQueueProcessor(): void {
+        if (this.queueProcessor) {
+            clearInterval(this.queueProcessor);
+            this.queueProcessor = null;
+            this.writeDebug('Queue processor stopped');
+        }
+    }
+
+    private async processQueue(): Promise<void> {
+        if (this.isProcessingQueue || !this.connected || this.messageQueue.length === 0) {
+            return;
+        }
+
+        this.isProcessingQueue = true;
+
+        try {
+            const request = this.messageQueue.shift();
+            if (request) {
+                await this.sendHCIRequest(request);
+            }
+        } catch (error) {
+            console.error('Error processing queue:', error);
+        } finally {
+            this.isProcessingQueue = false;
+        }
+    }
+
+    private async sendHCIRequest(request: HCIRequest): Promise<void> {
+        if (!this.socket || !this.connected) {
+            console.error('Cannot send message: not connected');
+            return;
+        }
+
+        try {
+            this.writeDebug(`Sending ${request.Urgent ? 'urgent' : 'normal'} message (RequestID: ${request.RequestID}, ${request.Data.length} bytes)`);
+            this.writeDebug(`Message data: ${request.toHexString()}`);
+
+            // Change this line to send the complete HCI message
+            this.socket.write(request.getRequest());
+
+        } catch (error) {
+            console.error(`Failed to send message: ${error}`);
+        }
+    }
+
+    private processMessage(message: Buffer): void {
+        // Delegate to ProcessResponse class
+        this.processResponse.processMessage(message);
+    }
+
+    // Public method to get queue status
+    public getQueueStatus(): { total: number; urgent: number; normal: number } {
+        const urgent = this.messageQueue.filter(req => req.Urgent).length;
+        const total = this.messageQueue.length;
+        return {
+            total,
+            urgent,
+            normal: total - urgent
+        };
+    }
+
+    // Public method to clear the queue
+    public clearQueue(): void {
+        const clearedCount = this.messageQueue.length;
+        this.messageQueue = [];
+        this.writeDebug(`Cleared ${clearedCount} messages from queue`);
+    }
+
+    sendMessage(message: string, urgent: boolean = false): boolean {
+        if (this.connected) {
+            const data = Buffer.from(message);
+            this.createAndQueueMessage(0x0001, data, urgent);
+            return true;
+        }
+        return false;
+    }
+
+    disconnect(): void {
+        this.stopQueueProcessor();
+        if (this.socket) {
+            this.socket.destroy();
+            this.socket = null;
+        }
+        this.connected = false;
+        this.writeDebug(`Disconnected from ${this.address}:${this.port}`);
+    }
+
+    getStatus(): string {
+        return this.connected ? 'Connected' : 'Disconnected';
+    }
+
+    getConnectedPort(): number | null {
+        return this.port;
+    }
 }
+
 
 
 
