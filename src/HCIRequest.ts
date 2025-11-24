@@ -1,4 +1,4 @@
-// @ts-nocheck
+
 class HCIRequest {
     public RequestID: number;
     public ResponseID: number | null;

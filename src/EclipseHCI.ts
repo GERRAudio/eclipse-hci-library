@@ -1,308 +1,188 @@
-// @ts-nocheck
-// EclipseHCI.ts
-//  HCI v2 (Eclipse HX 12.0+), 32-bit session token fixed
-import { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent, streamDeck, DialRotateEvent } from "@elgato/streamdeck";
+
+import * as net from 'net';
+import { EventEmitter } from 'events';
 import HCIRequest from './HCIRequest';
 import HCIResponse from './HCIResponse';
 import ProcessResponse from './Responses/ProcessResponse';
-import * as net from 'net';
-import { EventEmitter } from 'events';
-
-// Minimal but correct HCIRequest class
-class HCIRequest {
-    public readonly Urgent: boolean = false;
-    constructor(
-        public readonly RequestID: number,
-        public readonly Data: Buffer,
-        urgent: boolean = false,
-        public readonly ResponseID?: number
-    ) {
-        this.Urgent = urgent;
-    }
-
-    getRequest(): Buffer {
-        return HCI.buildPacket(this.RequestID, this.Data);
-    }
-
-    toString(): string {
-        return `HCIRequest(0x${this.RequestID.toString(16).padStart(4, '0')}, ${this.Data.length} bytes)`;
-    }
-}
-
-export interface EclipseHCIOptions {
-    address: string;
-    port?: number;               // Set to skip port scan
-    username?: string;
-    password?: string;
-    rateLimitMs?: number;
-    reconnect?: boolean;
-    reconnectDelayMs?: number;
-    showDebug?: boolean;
-}
-
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'authenticated';
+import { action, SingletonAction, KeyDownEvent, WillAppearEvent, WillDisappearEvent, streamDeck, DialRotateEvent } from "@elgato/streamdeck";
 
 export class EclipseHCI extends EventEmitter {
-    private static readonly START = Buffer.from([0x5A, 0x0F]);
-    private static readonly END = Buffer.from([0x2E, 0x8D]);
+    private address: string;
+    private connected: boolean;
+    private socket: net.Socket | null;
+    private port: number | null;
+    private buffer: Buffer; // Add buffer for incomplete packets
+    private messageQueue: HCIRequest[];
+    private queueProcessor: NodeJS.Timeout | null;
+    private rateLimitMs: number;
+    private isProcessingQueue: boolean;
+    public showDebug: boolean = true; // Add debug flag
+    private processResponse: ProcessResponse;
 
-    private readonly opts: Required<EclipseHCIOptions>;
-    private socket: net.Socket | null = null;
-    private buffer = Buffer.alloc(0);
-    private queue: HCIRequest[] = [];
-    private timer: NodeJS.Timeout | null = null;
-    private processing = false;
-    private reconnectTimer: NodeJS.Timeout | null = null;
+    constructor(address: string, rateLimitMs: number = 100) {
+        super(); // Call EventEmitter constructor
+        this.address = address;
+        this.connected = false;
+        this.socket = null;
+        this.port = null;
+        this.buffer = Buffer.alloc(0); // Initialize empty buffer
+        this.messageQueue = [];
+        this.queueProcessor = null;
+        this.rateLimitMs = rateLimitMs;
+        this.isProcessingQueue = false;
+        this.processResponse = new ProcessResponse(this); // Initialize ProcessResponse with reference to this
 
-    private state: ConnectionState = 'disconnected';
-    private sessionToken: number = 0;
-
-    constructor(options: EclipseHCIOptions) {
-        super();
-        this.opts = {
-            address: options.address,
-            port: options.port ?? 0,
-            username: options.username ?? 'admin',
-            password: options.password ?? 'admin',
-            rateLimitMs: options.rateLimitMs ?? 80,
-            reconnect: options.reconnect ?? true,
-            reconnectDelayMs: options.reconnectDelayMs ?? 5000,
-            showDebug: options.showDebug ?? true,
-        };
+        // Attempt to connect automatically on instantiation
         this.connect();
     }
 
-    private log(...args: any[]) {
-        if (this.opts.showDebug) console.log('[EclipseHCI]', ...args);
-        streamDeck.logger.error('[EclipseHCI]', ...args);
+    // Debug method that only outputs when showDebug is true
+    private writeDebug(message: string, ...args: any[]): void {
+        if (this.showDebug) {
+            console.log(message, ...args);
+            streamDeck.logger.error(message, ...args);
+        }
     }
 
     private async connect(): Promise<void> {
-        if (this.state === 'connecting') return;
-        this.state = 'connecting';
-        this.emit('statechange', this.state);
+        // Try ports from 52020 down to 52001
+        let cport =0;
+        for (let port = 52020; port >= 52001; port--) {
+            cport=port;
+            try {
+                await this.tryConnect(port);
+                this.port = port;
+                this.writeDebug(`Connected to ${this.address}:${port}`);
+                return;
+            } catch (error) {
+                console.error(`Failed to connect to port ${port}`);
+                continue;
+            }
+        }
 
-        const port = this.opts.port || await this.findPort();
-        this.log(`Connecting to ${this.opts.address}:${port}`);
+        console.error(`Failed to connect to ${this.address} on any port ${cport}`);
+        throw new Error(`Unable to establish connection to ${this.address}:${cport}`);
+    }
 
+    private tryConnect(port: number): Promise<void> {
         return new Promise((resolve, reject) => {
-            const sock = new net.Socket();
-            sock.setTimeout(10000);
+            const socket = new net.Socket();
+            const timeout = setTimeout(() => {
+                socket.destroy();
+                reject(new Error(`Connection timeout on port ${port}`));
+            }, 3000); // 3 second timeout
 
-            const cleanup = () => sock.destroy();
-            this.log(`connect...\n\n`);
-            sock.once('connect', () => {
-                this.socket = sock;
-                this.buffer = Buffer.alloc(0);
-                this.state = 'connected';
-                this.emit('connected');
-                this.setupSocket();
-                this.startQueue();
-                this.sendLoginV2().then(resolve).catch(reject);
-                this.log(`connected...\n\n`);
+            socket.connect(port, this.address, () => {
+                clearTimeout(timeout);
+                this.socket = socket;
+                this.setupSocketHandlers();
+                resolve();
             });
-            this.log(`timeout...\n\n`);
-            sock.once('error', err => { cleanup(); reject(err); });
-            sock.once('timeout', () => { cleanup(); reject(new Error('timeout')); });
 
-            sock.connect(port, this.opts.address);
+            socket.on('error', (error) => {
+                clearTimeout(timeout);
+                socket.destroy();
+                reject(error);
+            });
         });
     }
 
-    private async findPort(): Promise<number> {
-        const ranges = [
-            [52020, 52001],
-
-        ];
-        for (const [start, end] of ranges) {
-            for (let p = start; p >= end; p--) {
-                if (await this.testPort(p)) {
-                    this.log(`HCI port discovered: ${p}`);
-                    return p;
-                }
-            }
-        }
-        throw new Error('No Eclipse HCI port found');
-    }
-
-    private testPort(port: number): Promise<boolean> {
-        return new Promise(resolve => {
-            const s = new net.Socket();
-            s.setTimeout(700);
-            s.once('connect', () => { s.destroy(); resolve(true); });
-            //s.once('connect', () => {  resolve(true); });
-            s.once('error', () => resolve(false));
-            s.once('timeout', () => resolve(false));
-            s.connect(port, this.opts.address);
-        });
-    }
-
-    private setupSocket() {
+    private setupSocketHandlers(): void {
         if (!this.socket) return;
-        this.socket.on('data', d => this.handleData(d));
-        this.socket.on('close', hadErr => this.handleClose(hadErr));
-        this.socket.on('error', err => this.log('Socket error:', err.message));
-    }
 
-    private handleData(data: Buffer) {
-        this.buffer = Buffer.concat([this.buffer, data]);
-        while (this.buffer.length >= 6) {
-            if (!this.buffer.subarray(0, 2).equals(EclipseHCI.START)) {
-                const idx = this.buffer.indexOf(EclipseHCI.START);
-                this.buffer = idx === -1 ? Buffer.alloc(0) : this.buffer.subarray(idx);
-                continue;
+        this.socket.on('data', (data) => {
+            // Change state to connected when receiving messages
+            if (!this.connected) {
+                this.connected = true;
+                this.writeDebug(`Now receiving messages from ${this.address}:${this.port}`);
+                // Start queue processing when connected
+                this.startQueueProcessor();
             }
-            const len = this.buffer.readUInt16BE(2);
-            if (this.buffer.length < len) break;
+            this.handleMessage(data);
+        });
 
-            const packet = this.buffer.subarray(0, len);
-            this.buffer = this.buffer.subarray(len);
+        this.socket.on('close', () => {
+            this.connected = false;
+            this.socket = null;
+            this.stopQueueProcessor();
+            this.writeDebug(`Connection closed to ${this.address}:${this.port}`);
+        });
 
-            if (!packet.subarray(-2).equals(EclipseHCI.END)) {
-                this.log('Invalid end bytes');
-                continue;
-            }
-
-            this.handlePacket(packet);
-        }
-    }
-
-    private handlePacket(packet: Buffer) {
-        const payload = packet.subarray(4, -2);
-        const reqId = payload.readUInt16BE(0);
-
-        if (reqId === 0x8001) {
-            // CORRECT 32-bit session token at offset 2
-            this.sessionToken = payload.readUInt32BE(2);
-            this.state = 'authenticated';
-            this.log(`Authenticated! Session Token: 0x${this.sessionToken.toString(16).padStart(8, '0')}`);
-            this.emit('authenticated', this.sessionToken);
-            this.emit('statechange', this.state);
-            return;
-        }
-
-        this.emit('response', packet);
-        this.emit(`response:${reqId.toString(16).padStart(4, '0')}`, payload);
-    }
-
-    private async sendLoginV2(): Promise<void> {
-        const user = Buffer.from(this.opts.username, 'utf8');
-        const pass = Buffer.from(this.opts.password, 'utf8');
-
-        const payload = Buffer.alloc(6 + user.length + pass.length);
-        let off = 0;
-        payload.writeUInt16BE(0x0001, off); off += 2;
-        payload.writeUInt8(user.length, off); off += 1;
-        user.copy(payload, off); off += user.length;
-        payload.writeUInt8(pass.length, off); off += 1;
-        pass.copy(payload, off); off += pass.length;
-        payload.writeUInt16BE(2, off); // Protocol version 2
-
-        const packet = HCI.buildPacket(0x0001, payload);
-        await this.sendRaw(packet, true);
-        this.log('Login v2 sent');
-    }
-
-    private handleClose(hadError: boolean) {
-        this.log('Disconnected', hadError ? '(error)' : '');
-        this.state = 'disconnected';
-        this.sessionToken = 0;
-        this.stopQueue();
-        this.socket = null;
-        this.emit('disconnected');
-        this.emit('statechange', this.state);
-
-        if (this.opts.reconnect && !this.reconnectTimer) {
-            this.reconnectTimer = setTimeout(() => {
-                this.reconnectTimer = null;
-                this.connect().catch(() => { });
-            }, this.opts.reconnectDelayMs);
-        }
-    }
-
-    // === Public API ===
-    public async sendCommand(id: number, data: Buffer, urgent = false): Promise<void> {
-        const payload = HCI.v2Payload(id, data, this.sessionToken);
-        const packet = HCI.buildPacket(id, payload);
-        await this.sendRaw(packet, urgent);
-    }
-
-    public sendText(command: string, urgent = false): void {
-        this.sendCommand(0x0001, Buffer.from(command, 'utf8'), urgent);
-    }
-
-    private sendRaw(packet: Buffer, urgent = false): Promise<void> {
-        return new Promise(resolve => {
-            const req = new HCIRequest(0, packet, urgent);
-            this.enqueue(req);
-            resolve();
+        this.socket.on('error', (error) => {
+            console.error(`Socket error: ${error.message}`);
+            this.connected = false;
+            this.socket = null;
+            this.stopQueueProcessor();
         });
     }
 
-    private enqueue(req: HCIRequest) {
-        if (req.Urgent) {
-            const idx = this.queue.findIndex(r => !r.Urgent);
-            idx === -1 ? this.queue.push(req) : this.queue.splice(idx, 0, req);
-        } else {
-            this.queue.push(req);
-        }
-        this.log(`Queued (${req.Urgent ? 'URG' : 'NOR'}): ${req}`);
-    }
+    private handleMessage(data: Buffer): void {
+        // Append new data to existing buffer
+        this.buffer = Buffer.concat([this.buffer, data]);
 
-    private startQueue() {
-        if (this.timer) clearInterval(this.timer);
-        this.timer = setInterval(() => this.drain(), this.opts.rateLimitMs);
-    }
+        const startBytes = Buffer.from([0x5A, 0x0F]);
+        const endBytes = Buffer.from([0x2E, 0x8D]);
 
-    private stopQueue() {
-        if (this.timer) clearInterval(this.timer);
-        this.timer = null;
-    }
+        this.writeDebug(`Buffer now contains ${this.buffer.length} bytes: ${this.buffer.toString('hex')}`);
 
-    private async drain() {
-        if (this.processing || !this.socket || this.queue.length === 0) return;
-        this.processing = true;
-        const req = this.queue.shift()!;
-        this.socket.write(req.getRequest());
-        this.processing = false;
-    }
-
-    public disconnect() {
-        this.opts.reconnect = false;
-        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-        this.socket?.destroy();
-    }
-
-    public getState(): ConnectionState { return this.state; }
-    public getToken(): number { return this.sessionToken; }
-
-       // Queue management methods
-    public addToQueue(request: HCIRequest): void {
-        if (request.Urgent) {
-            // Find the position to insert urgent message (after other urgent messages)
-            let insertIndex = 0;
-            for (let i = 0; i < this.messageQueue.length; i++) {
-                if (this.messageQueue[i].Urgent) {
-                    insertIndex = i + 1;
-                } else {
-                    break;
-                }
+        // Process all complete messages in the buffer
+        while (this.buffer.length > 0) {
+            // Find start of message
+            const startIndex = this.buffer.indexOf(startBytes);
+            if (startIndex === -1) {
+                // No start found, keep buffer in case next data completes a start sequence
+                this.writeDebug('No start bytes found, keeping buffer for next data');
+                break;
             }
-            this.messageQueue.splice(insertIndex, 0, request);
-            this.writeDebug(`Added urgent message (RequestID: ${request.RequestID}) to queue at position ${insertIndex}`);
-        } else {
-            this.messageQueue.push(request);
-            this.writeDebug(`Added normal message (RequestID: ${request.RequestID}) to queue`);
+
+            // If start is not at beginning, remove everything before it
+            if (startIndex > 0) {
+                this.writeDebug(`Discarding ${startIndex} bytes before start sequence`);
+                this.buffer = this.buffer.subarray(startIndex);
+            }
+
+            // Check if we have enough bytes for start + length field (2 bytes + 2 bytes = 4 bytes minimum)
+            if (this.buffer.length < startBytes.length + 2) {
+                this.writeDebug('Not enough bytes for length field, waiting for more data');
+                break;
+            }
+
+            // Read length field (16 bits, big endian) immediately after start bytes
+            const lengthField = this.buffer.readUInt16BE(startBytes.length);
+            this.writeDebug(`Length field indicates message should be ${lengthField} bytes`);
+
+            // Check if we have the complete message based on length field
+            if (this.buffer.length < lengthField) {
+                this.writeDebug(`Buffer has ${this.buffer.length} bytes but need ${lengthField}, waiting for more data`);
+                break;
+            }
+
+            // Extract message based on length field
+            const completeMessage = this.buffer.subarray(0, lengthField);
+
+            // Verify end bytes are at expected position
+            const expectedEndStart = lengthField - endBytes.length;
+            const actualEndBytes = completeMessage.subarray(expectedEndStart);
+
+            if (!actualEndBytes.equals(endBytes)) {
+                console.error(`Message length validation failed. Expected end bytes ${endBytes.toString('hex')} at position ${expectedEndStart}, but found ${actualEndBytes.toString('hex')}`);
+                // Skip this message and try to find the next valid start
+                this.buffer = this.buffer.subarray(startBytes.length);
+                continue;
+            }
+
+            // Process the validated complete message
+            this.processMessage(completeMessage);
+
+            // Remove processed message from buffer
+            this.buffer = this.buffer.subarray(lengthField);
+            this.writeDebug(`Remaining buffer: ${this.buffer.length} bytes`);
         }
-
-        this.writeDebug(`Queue size: ${this.messageQueue.length}`);
     }
 
-    public createAndQueueMessage(requestID: number, data: Buffer, urgent: boolean = false, responseID?: number): void {
-        const request = new HCIRequest(requestID, data, urgent, responseID);
-        this.addToQueue(request);
-    }
-     // Queue management methods
+
+
+    // Queue management methods
     public addToQueue(request: HCIRequest): void {
         if (request.Urgent) {
             // Find the position to insert urgent message (after other urgent messages)
@@ -436,31 +316,5 @@ export class EclipseHCI extends EventEmitter {
         return this.port;
     }
 }
-
-
-// Static helpers 
-export class HCI {
-    static buildPacket(requestId: number, payload: Buffer): Buffer {
-        const total = 4 + payload.length + 2;
-        const buf = Buffer.alloc(total);
-        let off = 0;
-        EclipseHCI.START.copy(buf, off); off += 2;
-        buf.writeUInt16BE(total, off); off += 2;
-        payload.copy(buf, off); off += payload.length;
-        EclipseHCI.END.copy(buf, off);
-        return buf;
-    }
-
-    static v2Payload(requestId: number, data: Buffer, token: number): Buffer {
-        const buf = Buffer.alloc(6 + data.length);
-        buf.writeUInt16BE(requestId, 0);
-        buf.writeUInt32BE(token, 2);     // ← 32-bit token, correct offset!
-        data.copy(buf, 6);
-        return buf;
-    }
-}
-
-
-
 
 export default EclipseHCI;

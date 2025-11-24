@@ -1,6 +1,7 @@
 // test-eclipse.ts
 // Run with: npx tsx test-eclipse.ts   (or compile and run)
 
+// @ts-nocheck
 import EclipseHCI from './EclipseHCI';
 
 const hci = new EclipseHCI({
