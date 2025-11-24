@@ -130,6 +130,7 @@ export class EclipseHCI extends EventEmitter {
             const s = new net.Socket();
             s.setTimeout(700);
             s.once('connect', () => { s.destroy(); resolve(true); });
+            //s.once('connect', () => {  resolve(true); });
             s.once('error', () => resolve(false));
             s.once('timeout', () => resolve(false));
             s.connect(port, this.opts.address);
