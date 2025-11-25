@@ -16,7 +16,7 @@ export class EclipseHCI extends EventEmitter {
     private queueProcessor: NodeJS.Timeout | null;
     private rateLimitMs: number;
     private isProcessingQueue: boolean;
-    public showDebug: boolean = true; // Add debug flag
+    public showDebug: boolean = false; // Add debug flag
     private processResponse: ProcessResponse;
 
     constructor(address: string, rateLimitMs: number = 100) {
@@ -278,7 +278,7 @@ export class EclipseHCI extends EventEmitter {
 
     private processMessage(message: Buffer): void {
         // Delegate to ProcessResponse class
-        streamDeck.logger.info(
+        this.writeDebug(
             "← HCI Reply:",
             message.toString('hex').match(/.{2}/g)?.join(' ') ?? message.toString('hex')
         );

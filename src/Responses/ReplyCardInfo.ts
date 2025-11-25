@@ -1,6 +1,7 @@
 import { getCardTypeName, getCardTypeDescription, getCardTypeCategory } from '../DataStructures/CardTypes';
 import { getSlotTypeName, getSlotTypeDescription } from '../DataStructures/SlotTypes';
 import { getCardHealthName, getCardHealthDescription, getCardHealthIcon, getCardHealthSeverity, isCardHealthy } from '../DataStructures/CardHealth';
+import streamDeck from '@elgato/streamdeck';
 
 interface CardInfo {
     slotType: number;                  // Slot type
@@ -35,6 +36,8 @@ interface CardInfoData {
     rawPayload: string;
 }
 
+
+
 class ReplyCardInfo {
     public static parse(payload: Buffer): CardInfoData | null {
         // Check minimum payload size
@@ -45,7 +48,7 @@ class ReplyCardInfo {
         }
 
         // Log the raw payload with 0x between bytes
-        console.log('Raw card info payload:', payload.toString('hex').replace(/../g, '0x$& ').trim());
+        streamDeck.logger.info('Raw card info payload:', payload.toString('hex').replace(/../g, '0x$& ').trim());
 
         let offset = 0;
 
@@ -53,7 +56,7 @@ class ReplyCardInfo {
         const count = payload.readUInt8(offset);
         offset += 1;
 
-        console.log(`Parsing card info: Count=${count}`);
+        streamDeck.logger.info(`Parsing card info: Count=${count}`);
 
         // Calculate expected size per card entry
         // SlotType(1) + ExpectedCardType(1) + CurrentCardType(1) + Health(1) + RearConnector(1) + 
@@ -136,7 +139,7 @@ class ReplyCardInfo {
             const fpgaVersionStr = fpgaVersionBytes.toString('utf8').replace(/\0+$/, ''); // Remove null terminators
             offset += 64;
 
-            console.log(`Card ${i + 1}: Slot=${slotNumber}, Type=${currentCardType}, Health=${health}, Ports=${firstPort}-${lastPort}`);
+            streamDeck.logger.info(`Card ${i + 1}: Slot=${slotNumber}, Type=${currentCardType}, Health=${health}, Ports=${firstPort}-${lastPort}`);
 
             cards.push({
                 slotType,
@@ -174,11 +177,11 @@ class ReplyCardInfo {
     }
 
     public static displayCardInfo(data: CardInfoData): void {
-        console.log('=== Card Info Reply ===');
-        console.log(`Card Count: ${data.count}`);
-        console.log(`Cards Found: ${data.cards.length}`);
-        console.log(`Timestamp: ${data.timestamp}`);
-        console.log('');
+        streamDeck.logger.info('=== Card Info Reply ===');
+        streamDeck.logger.info(`Card Count: ${data.count}`);
+        streamDeck.logger.info(`Cards Found: ${data.cards.length}`);
+        streamDeck.logger.info(`Timestamp: ${data.timestamp}`);
+        streamDeck.logger.info('');
 
         if (data.cards.length > 0) {
             data.cards.forEach((card, index) => {
@@ -187,59 +190,59 @@ class ReplyCardInfo {
                 const portRange = card.firstPort !== card.lastPort ? `${card.firstPort}-${card.lastPort}` : `${card.firstPort}`;
                 const rearConnector = card.rearConnectorUnit ? ' [REAR]' : '';
 
-                console.log(`--- Card ${index + 1}: Rack ${card.rackNumber}, Slot ${card.slotNumber} ---`);
-                console.log(`  Slot Type: ${card.slotTypeName}`);
-                console.log(`  Expected Type: ${card.expectedCardTypeName}`);
-                console.log(`  Current Type: ${card.currentCardTypeName} ${typeMatch}${rearConnector}`);
-                console.log(`  Health: ${healthStatus}`);
-                console.log(`  Health Details: ${card.healthDescription}`);
-                console.log(`  Port Range: ${portRange} (${card.channels} channels)`);
+                streamDeck.logger.info(`--- Card ${index + 1}: Rack ${card.rackNumber}, Slot ${card.slotNumber} ---`);
+                streamDeck.logger.info(`  Slot Type: ${card.slotTypeName}`);
+                streamDeck.logger.info(`  Expected Type: ${card.expectedCardTypeName}`);
+                streamDeck.logger.info(`  Current Type: ${card.currentCardTypeName} ${typeMatch}${rearConnector}`);
+                streamDeck.logger.info(`  Health: ${healthStatus}`);
+                streamDeck.logger.info(`  Health Details: ${card.healthDescription}`);
+                streamDeck.logger.info(`  Port Range: ${portRange} (${card.channels} channels)`);
 
                 if (card.currentCardType === 3) { // MVX card
                     const dtmfPorts = this.getDTMFPortList(card.dtmfBoardPresent);
-                    console.log(`  DTMF Boards: 0x${card.dtmfBoardPresent.toString(16).padStart(4, '0')} (${dtmfPorts})`);
+                    streamDeck.logger.info(`  DTMF Boards: 0x${card.dtmfBoardPresent.toString(16).padStart(4, '0')} (${dtmfPorts})`);
                 }
 
-                console.log(`  App Version: ${card.appVersionStr || 'N/A'}`);
-                console.log(`  Boot Version: ${card.bootVersionStr || 'N/A'}`);
-                console.log(`  FPGA Version: ${card.fpgaVersionStr || 'N/A'}`);
-                console.log('');
+                streamDeck.logger.info(`  App Version: ${card.appVersionStr || 'N/A'}`);
+                streamDeck.logger.info(`  Boot Version: ${card.bootVersionStr || 'N/A'}`);
+                streamDeck.logger.info(`  FPGA Version: ${card.fpgaVersionStr || 'N/A'}`);
+                streamDeck.logger.info('');
             });
 
             // Summary statistics
             const stats = ReplyCardInfo.getCardStats(data);
-            console.log('--- Summary ---');
-            console.log(`Total Cards: ${data.cards.length}`);
-            console.log(`Healthy Cards: ${stats.healthyCards} | Faulty Cards: ${stats.faultyCards}`);
-            console.log(`Type Matches: ${stats.typeMatchCards} | Type Mismatches: ${stats.typeMismatchCards}`);
-            console.log(`Rear Connector Cards: ${stats.rearConnectorCards}`);
-            console.log(`Total Ports: ${stats.totalPorts} | Total Channels: ${stats.totalChannels}`);
+            streamDeck.logger.info('--- Summary ---');
+            streamDeck.logger.info(`Total Cards: ${data.cards.length}`);
+            streamDeck.logger.info(`Healthy Cards: ${stats.healthyCards} | Faulty Cards: ${stats.faultyCards}`);
+            streamDeck.logger.info(`Type Matches: ${stats.typeMatchCards} | Type Mismatches: ${stats.typeMismatchCards}`);
+            streamDeck.logger.info(`Rear Connector Cards: ${stats.rearConnectorCards}`);
+            streamDeck.logger.info(`Total Ports: ${stats.totalPorts} | Total Channels: ${stats.totalChannels}`);
 
             // Show card type breakdown
-            console.log('Card Types:', Object.entries(stats.cardTypeBreakdown)
+            streamDeck.logger.info('Card Types:', Object.entries(stats.cardTypeBreakdown)
                 .map(([type, count]) => `${type}: ${count}`)
                 .join(', '));
 
             // Show health breakdown
-            console.log('Health Status:', Object.entries(stats.healthBreakdown)
+            streamDeck.logger.info('Health Status:', Object.entries(stats.healthBreakdown)
                 .map(([health, count]) => `${health}: ${count}`)
                 .join(', '));
 
             // Show any issues
             if (stats.faultyCards > 0 || stats.typeMismatchCards > 0) {
-                console.log('');
-                console.log('⚠️  ISSUES DETECTED:');
+                streamDeck.logger.info('');
+                streamDeck.logger.info('⚠️  ISSUES DETECTED:');
                 if (stats.faultyCards > 0) {
-                    console.log(`  - ${stats.faultyCards} cards have health issues`);
+                    streamDeck.logger.info(`  - ${stats.faultyCards} cards have health issues`);
                 }
                 if (stats.typeMismatchCards > 0) {
-                    console.log(`  - ${stats.typeMismatchCards} cards have type mismatches`);
+                    streamDeck.logger.info(`  - ${stats.typeMismatchCards} cards have type mismatches`);
                 }
             }
         } else {
-            console.log('No card information found');
+            streamDeck.logger.info('No card information found');
         }
-        console.log('=========================');
+        streamDeck.logger.info('=========================');
     }
 
     // Helper methods for filtering and analysis
