@@ -15,6 +15,7 @@ import { ReplyAssignedKeys } from './Responses/ReplyAssignedKeys';
 import { ReplyCardInfo } from './Responses/ReplyCardInfo';
 import { ReplyConferenceAssignments } from './Responses/ReplyConferenceAssignments';
 import { ReplySetConfigMultipleKeys } from './Responses/ReplySetConfigMultipleKeys';
+import {  streamDeck } from "@elgato/streamdeck";
 
 class HCIResponse {
     public static handleMessageByID(
@@ -153,6 +154,7 @@ class HCIResponse {
     private static writeDebug(eclipseHCI: any, message: string, ...args: any[]): void {
         if (eclipseHCI && eclipseHCI.showDebug) {
             console.log(message, ...args);
+            streamDeck.logger.info(message, ...args);
         }
     }
 
@@ -423,7 +425,7 @@ class HCIResponse {
         this.writeDebug(eclipseHCI, `Reserved: ${reserved.toString('hex')}`);
         this.writeDebug(eclipseHCI, `Text: "${text}"`);
         this.writeDebug(eclipseHCI, `Text length: ${text.length} characters`);
-        this.writeDebug(eclipseHCI, '=====================================');
+        this.writeDebug(eclipseHCI, 'Broadcast Message=====================================');
 
         // Emit the event if EclipseHCI instance is provided
         if (eclipseHCI && typeof eclipseHCI.emitBroadcastMessage === 'function') {

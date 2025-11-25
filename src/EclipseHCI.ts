@@ -3,7 +3,7 @@ import * as net from 'net';
 import { EventEmitter } from 'events';
 import HCIRequest from './HCIRequest';
 import ProcessResponse from './Responses/ProcessResponse';
-import {  streamDeck } from "@elgato/streamdeck";
+import { streamDeck } from "@elgato/streamdeck";
 
 
 export class EclipseHCI extends EventEmitter {
@@ -40,7 +40,7 @@ export class EclipseHCI extends EventEmitter {
     private writeDebug(message: string, ...args: any[]): void {
         if (this.showDebug) {
             console.log(message, ...args);
-            streamDeck.logger.error(message, ...args);
+            streamDeck.logger.info(message, ...args);
         }
     }
 
@@ -278,6 +278,10 @@ export class EclipseHCI extends EventEmitter {
 
     private processMessage(message: Buffer): void {
         // Delegate to ProcessResponse class
+        streamDeck.logger.info(
+            "← HCI Reply:",
+            message.toString('hex').match(/.{2}/g)?.join(' ') ?? message.toString('hex')
+        );
         this.processResponse.processMessage(message);
     }
 

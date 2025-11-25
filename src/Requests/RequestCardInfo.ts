@@ -23,13 +23,13 @@ class RequestCardInfo extends HCIRequest {
         this.HCIVersion = 2;
 
         // Set protocol version to 1 for RequestCardInfo
-        this.ProtocolVersion = 1;
+        this.ProtocolVersion = 2;
 
         this.Slot = slot;
     }
 
     // Helper method to display the request details
-    public toString(): string {
+    public override toString(): string {
         return `RequestCardInfo - Message ID: 0x${this.RequestID.toString(16).padStart(4, '0')}, Slot: ${this.Slot}`;
     }
 
