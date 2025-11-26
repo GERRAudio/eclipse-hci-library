@@ -42,7 +42,8 @@ class HCIRequest {
             const preamble = Buffer.from([0xAB, 0xBA, 0xCE, 0xDE]);
             const protocol = Buffer.from([this.ProtocolVersion]); // Use ProtocolVersion property
 
-            const headerSize = startBytes.length + 2 + 2 + 1 + preamble.length + protocol.length;
+            //const headerSize = startBytes.length + 2 + 2 + 1 + preamble.length + protocol.length;
+            const headerSize = startBytes.length + 2 + 2 + 1 + 4 + 1
             const totalLength = headerSize + this.Data.length + endBytes.length;
 
             messageBuffer = Buffer.allocUnsafe(totalLength);
