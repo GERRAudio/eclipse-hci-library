@@ -3,7 +3,6 @@ import * as net from 'net';
 import { EventEmitter } from 'events';
 import HCIRequest from './HCIRequest';
 import ProcessResponse from './Responses/ProcessResponse';
-import { streamDeck } from "@elgato/streamdeck";
 
 
 export class EclipseHCI extends EventEmitter {
@@ -40,15 +39,12 @@ export class EclipseHCI extends EventEmitter {
     private writeDebug(message: string, ...args: any[]): void {
         if (this.showDebug) {
             console.log(message, ...args);
-            streamDeck.logger.info(message, ...args);
         }
     }
 
     private async connect(): Promise<void> {
         // Try ports from 52020 down to 52001
-        let cport = 0;
         for (let port = 52020; port >= 52001; port--) {
-            cport = port;
             try {
                 this.writeDebug(`EHX---Connecting to ${this.address}:${port}`);
                 this.tryConnect(port);
@@ -61,8 +57,8 @@ export class EclipseHCI extends EventEmitter {
             }
         }
 
-        console.error(`EHX---Failed to connect to ${this.address} on any port ${cport}`);
-        throw new Error(`Unable to establish connection to ${this.address}:${cport}:${this.port}`);
+        console.error(`Failed to connect to ${this.address} on any port (52020-52001)`);
+        throw new Error(`Unable to establish connection to ${this.address}`);
     }
 
     private tryConnect(port: number): Promise<void> {

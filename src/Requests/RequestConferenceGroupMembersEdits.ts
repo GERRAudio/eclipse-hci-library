@@ -37,7 +37,7 @@ class RequestConferenceGroupMembersEdits extends HCIRequest {
     }
 
     // Helper method to display the request details
-    public toString(): string {
+    public override toString(): string {
         const typeName = this.EditType === EditType.Conference ? 'Conference' : 'Group';
         return `RequestConferenceGroupMembersEdits - Message ID: 0x${this.RequestID.toString(16).padStart(4, '0')}, Type: ${typeName}`;
     }
